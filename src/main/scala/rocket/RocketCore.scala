@@ -238,6 +238,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     (if (coreParams.useZba) new ZbaDecode +: (xLen > 32).option(new Zba64Decode).toSeq else Nil) ++:
     (if (coreParams.useZbb) Seq(new ZbbDecode, if (xLen == 32) new Zbb32Decode else new Zbb64Decode) else Nil) ++:
     coreParams.useZbs.option(new ZbsDecode) ++:
+    // 新增支持退出异常的解码
+    Seq(new NemuTrapDecode) ++:
     Seq(new IDecode)
   } flatMap(_.table)
 
@@ -1232,32 +1234,55 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }
   else {
     when (csr.io.trace(0).valid) {
-      printf("C%d: %d [%d] pc=[%x] W[r%d=%x][%d] R[r%d=%x] R[r%d=%x] inst=[%x] DASM(%x)\n",
-         io.hartid, coreMonitorBundle.timer, coreMonitorBundle.valid,
-         coreMonitorBundle.pc,
-         Mux(wb_ctrl.wxd || wb_ctrl.wfd, coreMonitorBundle.wrdst, 0.U),
-         Mux(coreMonitorBundle.wrenx, coreMonitorBundle.wrdata, 0.U),
-         coreMonitorBundle.wrenx,
-         Mux(wb_ctrl.rxs1 || wb_ctrl.rfs1, coreMonitorBundle.rd0src, 0.U),
-         Mux(wb_ctrl.rxs1 || wb_ctrl.rfs1, coreMonitorBundle.rd0val, 0.U),
-         Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1src, 0.U),
-         Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1val, 0.U),
-         coreMonitorBundle.inst, coreMonitorBundle.inst)
+      // printf("C%d: %d [%d] pc=[%x] W[r%d=%x][%d] R[r%d=%x] R[r%d=%x] inst=[%x] DASM(%x)\n",
+        //  io.hartid, coreMonitorBundle.timer, coreMonitorBundle.valid,
+        //  coreMonitorBundle.pc,
+        //  Mux(wb_ctrl.wxd || wb_ctrl.wfd, coreMonitorBundle.wrdst, 0.U),
+        //  Mux(coreMonitorBundle.wrenx, coreMonitorBundle.wrdata, 0.U),
+        //  coreMonitorBundle.wrenx,
+        //  Mux(wb_ctrl.rxs1 || wb_ctrl.rfs1, coreMonitorBundle.rd0src, 0.U),
+        //  Mux(wb_ctrl.rxs1 || wb_ctrl.rfs1, coreMonitorBundle.rd0val, 0.U),
+        //  Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1src, 0.U),
+        //  Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1val, 0.U),
+        //  coreMonitorBundle.inst, coreMonitorBundle.inst)
     }
   }
   if (true) {
-    val difftestArchEvent = DifftestModule(new DiffArchEvent, delay = 1, dontCare = true)
-    difftestArchEvent := DontCare
+    // val difftestArchEvent = DifftestModule(new DiffArchEvent, delay = 1, dontCare = true)
+    // difftestArchEvent := DontCare
     val difftest = DifftestModule(new DiffInstrCommit, delay = 1, dontCare = true)
+    val trace = csr.io.trace(0)
+    // val isExitInst = trace.valid && trace.insn === "h0000006b".U
+    // val commitValid = trace.isCommit || isExitInst
+
     difftest.coreid := 0.U
     difftest.index := 0.U
-    difftest.valid := 0.U
+    difftest.valid := trace.isCommit
+    difftest.pc := trace.iaddr
+    difftest.instr := trace.insn
+    difftest.isRVC := trace.insn(1, 0) =/= 3.U
+    difftest.skip := false.B
+    difftest.rfwen := wb_wen && wb_waddr =/= 0.U
+    difftest.fpwen := false.B
+    difftest.vecwen := false.B
+    difftest.wpdest := wb_waddr
+    difftest.wdest := wb_waddr
+    difftest.robIdx := 0.U
+    difftest.lqIdx := 0.U
+    difftest.sqIdx := 0.U
+    difftest.isLoad := wb_ctrl.mem && wb_ctrl.mem_cmd === M_XRD
+    difftest.isStore := wb_ctrl.mem && wb_ctrl.mem_cmd === M_XWR
+    difftest.nFused := 0.U
+    difftest.setSpecial()
+
     val difftestCSRState = DifftestModule(new DiffCSRState)
     difftestCSRState := DontCare
     val difftestIntRegState = DifftestModule(new DiffArchIntRegState)
     difftestIntRegState := DontCare
-    val difftestTrapEvent = DifftestModule(new DiffTrapEvent)
-    difftestTrapEvent := DontCare
+    // val difftestTrapEvent = DifftestModule(new DiffTrapEvent)
+    // difftestTrapEvent := DontCare
+    val difftestSnapshotCSRState = DifftestModule(new DiffSnapshotCSRState)
+    difftestSnapshotCSRState := csr.io.snapshot
   }
 
   // CoreMonitorBundle for late latency writes

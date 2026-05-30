@@ -551,3 +551,13 @@ class RoCCDecode(implicit val p: Parameters) extends DecodeConstants
     CUSTOM3_RD_RS1->    List(Y,N,Y,N,N,N,N,Y,A2_ZERO,A1_RS1, IMM_X, DW_XPR,FN_ADD,   N,M_X,N,N,N,N,N,N,Y,CSR.N,N,N,N,N),
     CUSTOM3_RD_RS1_RS2->List(Y,N,Y,N,N,N,Y,Y,A2_ZERO,A1_RS1, IMM_X, DW_XPR,FN_ADD,   N,M_X,N,N,N,N,N,N,Y,CSR.N,N,N,N,N))
 }
+
+class NemuTrapDecode(implicit val p: Parameters) extends DecodeConstants
+{ 
+  val table: Array[(BitPat, List[BitPat])] = Array(
+    // Decode 0x0000006b as a legal no-op-like instruction.
+    // It has no register reads, no register writes, no memory access, and no CSR side effect.
+    // The only purpose is to let Rocket retire it normally so CSR.scala can raise DiffTrapEvent.
+    NEMU_TRAP->List(Y,N,N,N,N,N,N,N,A2_X,A1_X,IMM_X,DW_X,FN_X,N,M_X,N,N,N,N,N,N,N,CSR.N,N,N,N,N)
+  )
+}
