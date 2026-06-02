@@ -284,6 +284,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val mem_reg_raw_inst = Reg(UInt())
   val mem_reg_wdata = Reg(Bits())
   val mem_reg_rs2 = Reg(Bits())
+
+  val mem_reg_rs1_val = Reg(UInt(xLen.W))
+  val mem_reg_rs2_val = Reg(UInt(xLen.W))
+
   val mem_br_taken = Reg(Bool())
   val take_pc_mem = Wire(Bool())
   val mem_reg_wphit          = Reg(Vec(nBreakpoints, Bool()))
@@ -300,6 +304,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val wb_reg_hls_or_dv = Reg(Bool())
   val wb_reg_hfence_v = Reg(Bool())
   val wb_reg_hfence_g = Reg(Bool())
+
+  val wb_reg_rs1_val = Reg(UInt(xLen.W))
+  val wb_reg_rs2_val = Reg(UInt(xLen.W))
+
   val wb_reg_inst = Reg(Bits())
   val wb_reg_raw_inst = Reg(UInt())
   val wb_reg_wdata = Reg(Bits())
@@ -658,6 +666,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     mem_reg_mem_size := ex_reg_mem_size
     mem_reg_hls_or_dv := io.dmem.req.bits.dv
     mem_reg_pc := ex_reg_pc
+
+    mem_reg_rs1_val := ex_rs(0)
+    mem_reg_rs2_val := ex_rs(1)
     // IDecode ensured they are 1H
     mem_reg_wdata := Mux(ex_reg_set_vconfig, ex_new_vl.getOrElse(alu.io.out), alu.io.out)
     mem_br_taken := alu.io.cmp_out
@@ -724,6 +735,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     wb_reg_hfence_v := mem_ctrl.mem_cmd === M_HFENCEV
     wb_reg_hfence_g := mem_ctrl.mem_cmd === M_HFENCEG
     wb_reg_pc := mem_reg_pc
+    // 用于记录退休指令源寄存器的值
+    wb_reg_rs1_val := mem_reg_rs1_val
+    wb_reg_rs2_val := mem_reg_rs2_val
     wb_reg_wphit := mem_reg_wphit | bpu.io.bpwatch.map { bpw => (bpw.rvalid(0) && mem_reg_load) || (bpw.wvalid(0) && mem_reg_store) }
     wb_reg_set_vconfig := mem_reg_set_vconfig
   }
@@ -1267,6 +1281,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     difftest.vecwen := false.B
     difftest.wpdest := wb_waddr
     difftest.wdest := wb_waddr
+
+    difftest.src1Valid := wb_ctrl.rxs1
+    difftest.src2Valid := wb_ctrl.rxs2
+    difftest.src1 := wb_reg_inst(19, 15)
+    difftest.src2 := wb_reg_inst(24, 20)
+    difftest.src1Data := wb_reg_rs1_val
+    difftest.src2Data := wb_reg_rs2_val
+
     difftest.robIdx := 0.U
     difftest.lqIdx := 0.U
     difftest.sqIdx := 0.U
